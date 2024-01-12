@@ -36,8 +36,9 @@ def build_sam_vit_l(checkpoint=None):
     )
 
 
-def build_sam_vit_b(checkpoint=None):
+def build_sam_vit_b(checkpoint=None, adapt=False):
     return _build_sam(
+        adapt=False,
         encoder_embed_dim=768,
         encoder_depth=12,
         encoder_num_heads=12,
@@ -55,6 +56,7 @@ sam_model_registry = {
 
 
 def _build_sam(
+    adapt,
     encoder_embed_dim,
     encoder_depth,
     encoder_num_heads,
@@ -67,6 +69,7 @@ def _build_sam(
     image_embedding_size = image_size // vit_patch_size
     sam = Sam(
         image_encoder=ImageEncoderViT(
+            adapt=adapt,
             depth=encoder_depth,
             embed_dim=encoder_embed_dim,
             img_size=image_size,
@@ -105,5 +108,5 @@ def _build_sam(
     if checkpoint is not None:
         with open(checkpoint, "rb") as f:
             state_dict = torch.load(f)
-        sam.load_state_dict(state_dict)
+        sam.load_state_dict(state_dict, strict=False)
     return sam

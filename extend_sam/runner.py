@@ -33,10 +33,10 @@ class SemRunner(BaseRunner):
     # def __init__(self, **kwargs):
     #     super().__init__(kwargs)
 
-    def __init__(self, model, optimizer, losses, train_loader, val_loader, scheduler):
+    def __init__(self, model, model_adapt, optimizer, losses, train_loader, val_loader, scheduler):
         super().__init__(model, optimizer, losses, train_loader, val_loader, scheduler)
         self.exist_status = ['train', 'eval', 'test']
-        self.generate_model = deepcopy(self.model)
+        self.model_adapt = model_adapt
 
     def train(self, cfg):
         # initial identify
@@ -61,9 +61,9 @@ class SemRunner(BaseRunner):
                 plt.imshow(im.cpu().squeeze().detach().numpy().transpose(1,2,0), interpolation='nearest', cmap='hot')
                 plt.show()
             images, labels = images.cuda(), labels.cuda().long()
-            masks_pred, iou_pred = self.model(images)
+            masks_pred, iou_pred = self.model_adapt(images)
             with torch.no_grad():
-                fake_masks_pred, fake_iou_pred = self.generate_model(images, labels)
+                fake_masks_pred, fake_iou_pred = self.model(images, labels)
             masks_pred = F.interpolate(masks_pred, self.original_size, mode="bilinear", align_corners=False)
             fake_masks_pred = F.interpolate(fake_masks_pred, self.original_size, mode="bilinear", align_corners=False)
             fake_masks_pred = nn.ELU()(fake_masks_pred)
@@ -108,13 +108,13 @@ class SemRunner(BaseRunner):
                 mIoU, _ = self._eval()
                 if best_valid_mIoU == -1 or best_valid_mIoU < mIoU:
                     best_valid_mIoU = mIoU
-                    save_model(self.model, model_path, parallel=self.the_number_of_gpu > 1)
+                    save_model(self.model_adapt, model_path, parallel=self.the_number_of_gpu > 1)
                     print_and_save_log("saved model in {model_path}".format(model_path=model_path), path=log_path)
                 log_data = {'mIoU': mIoU, 'best_valid_mIoU': best_valid_mIoU}
                 write_log(iteration=iteration, log_path=log_path, log_data=log_data, status=self.exist_status[1],
                           writer=writer, timer=self.eval_timer)
         # final process
-        save_model(self.model, model_path, is_final=True, parallel=self.the_number_of_gpu > 1)
+        save_model(self.model_adapt, model_path, is_final=True, parallel=self.the_number_of_gpu > 1)
         if writer is not None:
             writer.close()
 
@@ -130,8 +130,8 @@ class SemRunner(BaseRunner):
             for index, (images, labels) in enumerate(self.val_loader):
                 images = images.cuda()
                 labels = labels.cuda()
-                masks_pred, iou_pred = self.model(images)
-                masks_pred, iou_pred = self.model(images, labels)
+                masks_pred, iou_pred = self.model_adapt(images)
+                labels, iou_labels = self.model(images, labels)
                 predictions = torch.argmax(masks_pred, dim=1)
                 for batch_index in range(images.size()[0]):
                     pred_mask = get_numpy_from_tensor(predictions[batch_index])
